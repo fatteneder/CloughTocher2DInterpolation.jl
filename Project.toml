@@ -1,0 +1,8 @@
+name = "CloughTocher2DInterpolation"
+uuid = "b70b374f-000b-463f-88dc-37030f004bd0"
+authors = ["fatteneder"]
+version = "0.1.0"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MiniQhull = "978d7f02-9e05-4691-894f-ae31a51d76ca"
