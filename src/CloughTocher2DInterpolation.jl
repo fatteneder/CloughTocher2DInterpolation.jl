@@ -90,14 +90,6 @@ function DelaunayInfo(points::Matrix{Float64})
     dim, _npoints = size(points)
     npoints = Int32(_npoints)
 
-    ## (Personal) Glossary
-    # TODO Is this correct?
-    # simplex =^= region spanned by 3 vertices
-    # facet =^= boundary of a simplex, 3 facets make up the boundary of a simplex
-    # neighbor =^= ith facet that is neighboring the current facet, the facet is opposite
-    # to the ith vertex that spans the facet
-    # transform =^= some affine (inverse) map
-
     # these options are used by scipy when running the 6 point 2D MWE
     flags = "qhull d Qt Q12 Qz Qbb Qc"
     _points = Array{Float64}(points)
@@ -108,7 +100,7 @@ function DelaunayInfo(points::Matrix{Float64})
     # first two indices of simplces to maintain a counter clockwise order
     # we enforce the same ordering here
     # detect orientation by looking at the sign of the z-component of the cross product of
-    # two vectors connecting simplices[2:1] and simplices[3:2]
+    # two vectors connecting simplices[2]->simplices[1] and simplices[3]->simplices[2]
     for simp in eachcol(simplices)
         v1x = points[1,simp[2]] - points[1,simp[1]]
         v2x = points[1,simp[3]] - points[1,simp[2]]
@@ -151,8 +143,6 @@ function DelaunayInfo(points::Matrix{Float64})
         end
     end
 
-    # - vertex_neighbors_indices
-    # - vertex_neighbors_indptr
     # Literal translation of scipy/scipy/spatial/_qhull.pyx
     # TODO Combine this block with next one
     # TODO Convert this into a dict.
@@ -232,11 +222,6 @@ function get_barycentric_transforms(npoints, _points, nsimplex, simplices, eps)
     Tinvs = zeros(Float64, nsimplex, NDIM+1, NDIM)
     # instead we use a buffer
     Tinv = zeros(Float64, NDIM, NDIM)
-
-    # TODO Needed if lu! does the condition number check?
-    # # Maximum inverse condition number to allow: we want at least three
-    # # of the digits be significant, to be safe
-    # rcond_limit = 1000*eps
 
     # points are layed out as npoints x ndims
     # simplices are layed out as nsimplices x ndims
@@ -418,7 +403,6 @@ function estimate_gradients_2d_global(info, y, maxiter=400, tol=1e-6)
     # scipy/scipy/interpolate/interpnd.pyx:estimate_gradients_2d_global
     # contains a useless loop 'for k in range(nvalues):` which only does one iteration
     # to call _estimate_gradients_2d_global
-    # # TODO Add ! to function to reflect mutation of grad
     ret = _estimate_gradients_2d_global(info, y, maxiter, tol, grad)
     if ret == 0
         @warn("Gradient estimation did not converge, the results may be inaccurate")
@@ -930,7 +914,6 @@ end
 
 function _clough_tocher_2d_single(d #=delaunay=#, isimplex, b, f, df)
 
-    # TODO Update indexing here, what is with the 2*? Seems to be the point stride ...
     e12x = (+ d.points[1 + 2*(d.simplices[3*(isimplex-1) + 2]-1)]
             - d.points[1 + 2*(d.simplices[3*(isimplex-1) + 1]-1)])
     e12y = (+ d.points[2 + 2*(d.simplices[3*(isimplex-1) + 2]-1)]
@@ -1023,7 +1006,6 @@ function _clough_tocher_2d_single(d #=delaunay=#, isimplex, b, f, df)
     c = zeros(Float64, 3)
     g = zeros(Float64, 3)
     for k = 1:3
-        # TODO Update indexing
         itri = d.neighbors[3*(isimplex-1) + k]
 
         if itri == -1
@@ -1035,7 +1017,6 @@ function _clough_tocher_2d_single(d #=delaunay=#, isimplex, b, f, df)
 
         # Centroid of the neighbour, in our local barycentric coordinates
 
-        # TODO Update indexing, what's the deal with the 2*? Seems to be the point stride ...
         y[1] = (+ d.points[1 + 2*(d.simplices[3*(itri-1) + 1]-1)]
                 + d.points[1 + 2*(d.simplices[3*(itri-1) + 2]-1)]
                 + d.points[1 + 2*(d.simplices[3*(itri-1) + 3]-1)]) / 3
@@ -1044,7 +1025,6 @@ function _clough_tocher_2d_single(d #=delaunay=#, isimplex, b, f, df)
                 + d.points[2 + 2*(d.simplices[3*(itri-1) + 2]-1)]
                 + d.points[2 + 2*(d.simplices[3*(itri-1) + 3]-1)]) / 3
 
-        # TODO Implement this
         transform = view(d.transform,isimplex,:,:)
         _barycentric_coordinates(transform, y, c)
 
