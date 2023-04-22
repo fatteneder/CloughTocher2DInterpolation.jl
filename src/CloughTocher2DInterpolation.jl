@@ -3,34 +3,13 @@ module CloughTocher2DInterpolation
 
 using MiniQhull
 using LinearAlgebra
+using SnoopPrecompile
 
 export CloughTocher2DInterpolator
 
 
 
 const NDIM = 2
-
-
-
-function __precompie__()
-
-    points = Float64[0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
-
-    # real
-    values = Float64[1,   2,   3,   4,   5,   6]
-    ip = CloughTocher2DInterpolator(coordinates, values)
-    icoords = [0.5,0.5, 1.5,0.5]
-    ip(icoords)
-
-    # complex
-    values = Float64[1+2im,   2+3im,   3-1im,   4-0.5im,   5-3im,   6+5im]
-    ip = CloughTocher2DInterpolator(coordinates, values)
-    icoords = [0.5,0.5, 1.5,0.5]
-    ip(icoords)
-
-end
-
-
 
 
 
@@ -841,6 +820,27 @@ function _clough_tocher_2d_single(d::DelaunayInfo, isimplex, b, f, df)
     return w
 
 end
+
+
+
+
+@precompile_setup begin
+
+    points         = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+    ipoints        = [0.5,0.5, 1.5,0.5]
+    real_values    = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    complex_values = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
+
+    @precompile_all_calls begin
+        ip = CloughTocher2DInterpolator(points, real_values)
+        ip(ipoints)
+        ip = CloughTocher2DInterpolator(points, complex_values)
+        ip(ipoints)
+    end
+
+end
+
+
 
 
 end # module CloughTocher2DInterpolation
