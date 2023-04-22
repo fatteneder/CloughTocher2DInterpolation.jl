@@ -545,6 +545,31 @@ function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _in
 end
 
 
+function find_simplex(d::DelaunayInfo, pt::NTuple{2}, tol=nothing)
+    eeps = isnothing(tol) ? 100 * eps(Float64) : tol
+    eeps_broad = sqrt(eeps)
+    buffer_c = zeros(Float64, 3)
+    isimplex = _find_simplex_bruteforce(d, buffer_c, pt, eeps, eeps_broad)
+    return isimplex
+end
+
+
+function find_simplex(d::DelaunayInfo, _points::AbstractArray, tol=nothing)
+
+    size_check(_points)
+    npoints = Int(length(_points)/2)
+    points = reshape(_points, 2, npoints)
+
+    eeps = isnothing(tol) ? 100 * eps(Float64) : tol
+    eeps_broad = sqrt(eps)
+
+    buffer_c = zeros(3)
+
+    isimplices = [ _find_simplex_bruteforce(d, buffer_c, pt, eeps, eeps_broad)
+                   for pt in points ]
+
+    return isimplices
+end
 
 
 
