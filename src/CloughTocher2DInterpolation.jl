@@ -70,10 +70,6 @@ function DelaunayInfo(points::AbstractVector{<:Real})
     size_check(points)
     return DelaunayInfo(reshape(float.(points), 2, Int(length(points)/2)))
 end
-function DelaunayInfo(points::AbstractVector{<:Complex})
-    size_check(points)
-    return DelaunayInfo(reshape(complex.(points), 2, Int(length(points)/2)))
-end
 
 
 function DelaunayInfo(points::Matrix{Float64})
