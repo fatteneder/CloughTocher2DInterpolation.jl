@@ -117,9 +117,9 @@ function DelaunayInfo(points::Matrix{Float64})
         1.0, 0.0
     end
 
-    # -1 indices if no neighbor
+    # indices of vertices of neighboring simplices, ith neighbor of jth simplex is
+    # opposite to the ith vertex that spans the simplex, -1 if no neighbor
     neighbors = -ones(Int32, nsimplex, NDIM+1)
-    # indices of neighboring simplices
     for isimplex = 1:nsimplex
         v1,v2,v3 = simplices[:,isimplex]
         for (i,simp) in enumerate(eachcol(simplices))
@@ -206,7 +206,7 @@ function get_barycentric_transforms(npoints, _points, nsimplex, simplices, eps)
     Tinv = zeros(Float64, NDIM, NDIM)
 
     # points are layed out as ndims x npoints
-    # simplices are layed out as ndims x nsimplices x ndims
+    # simplices are layed out as ndims x nsimplices
     for isimplex = 1:nsimplex
         fill!(Tinv, 0.0)
         for i = 1:NDIM
