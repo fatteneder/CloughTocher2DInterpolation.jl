@@ -15,7 +15,8 @@ const NDIM = 2
 const libqhull_r   = MiniQhull.QhullMiniWrapper_jll.Qhull_jll.libqhull_r
 # Copy of MiniQhull._delaunay where we also extract the variables
 # last_newhigh, last_high, last_low, SCALElast from the qhull_handler
-function my_delaunay(dim::Int32, numpoints::Int32, points, flags::Union{Nothing,AbstractString})
+function my_delaunay(dim::Int32, numpoints::Int32, points::Array{Float64},
+                     flags::Union{Nothing,AbstractString})
     numcells = Ref{Int32}()
     qh = MiniQhull.new_qhull_handler()
     qh == C_NULL && error("Qhull handler is null")
@@ -41,32 +42,35 @@ end
 # with only the fields necessary for the interpolation algo
 struct DelaunayInfo
 
-    npoints
-    points
+    # inputs
+    npoints::Int32
+    points::Matrix{Float64}
 
-    nsimplex
-    simplices
-    neighbors
+    # from qhull
+    nsimplex::Int32
+    simplices::Matrix{Int32}
     # equations
-    transform
+    paraboloid_scale::Float64
+    paraboloid_shift::Float64
+    max_bound::Vector{Float64}
+    min_bound::Vector{Float64}
 
-    paraboloid_scale
-    paraboloid_shift
-    max_bound
-    min_bound
-
-    vertex_neighbors_indices
-    vertex_neighbors_indptr
+    # manually computed
+    neighbors::Matrix{Int32}
+    transform::Array{Float64,3}
+    vertex_neighbors_indices::Vector{Int32}
+    vertex_neighbors_indptr::Vector{Int32}
 
 end
 
 
-function DelaunayInfo(npoints, points)
-    DelaunayInfo(Int32(npoints), Array{Float64}(points))
-end
+function DelaunayInfo(points::Matrix{Float64})
 
-
-function DelaunayInfo(npoints::Int32, points)
+    dim, _npoints = size(points)
+    npoints = Int32(_npoints)
+    if dim != NDIM
+        throw(ArgumentError("points must be organized as 2xnpoints matrix"))
+    end
 
     ## (Personal) Glossary
     # TODO Is this correct?
@@ -78,11 +82,9 @@ function DelaunayInfo(npoints::Int32, points)
 
     # these options are used by scipy when running the 6 point 2D MWE
     flags = "qhull d Qt Q12 Qz Qbb Qc"
+    _points = Array{Float64}(points)
     simplices, last_newhigh, last_high, last_low, SCALElast =
-        my_delaunay(Int32(NDIM), npoints, points, flags)
-
-    # TODO Do we need this reshape?
-    _points = reshape(points, (NDIM,npoints))
+        my_delaunay(Int32(NDIM), Int32(npoints), _points, flags)
 
     # scipy/scipy/spatial/_qhull:_Qhull::get_simplex_facet_array likes to exchange the
     # first two indices of simplces to maintain a counter clockwise order
@@ -90,10 +92,10 @@ function DelaunayInfo(npoints::Int32, points)
     # detect orientation by looking at the sign of the z-component of the cross product of
     # two vectors connecting simplices[2:1] and simplices[3:2]
     for simp in eachcol(simplices)
-        v1x = _points[1,simp[2]] - _points[1,simp[1]]
-        v2x = _points[1,simp[3]] - _points[1,simp[2]]
-        v1y = _points[2,simp[2]] - _points[2,simp[1]]
-        v2y = _points[2,simp[3]] - _points[2,simp[2]]
+        v1x = points[1,simp[2]] - points[1,simp[1]]
+        v2x = points[1,simp[3]] - points[1,simp[2]]
+        v1y = points[2,simp[2]] - points[2,simp[1]]
+        v2y = points[2,simp[3]] - points[2,simp[2]]
         z = v1x * v2y - v1y * v2x
         @assert !isapprox(z,0.0)
         if z < 0 # swap
@@ -101,10 +103,10 @@ function DelaunayInfo(npoints::Int32, points)
         end
     end
 
-    nsimplex = size(simplices)[2]
+    nsimplex = Int32(size(simplices)[2])
 
-    min_bound = minimum(_points, dims=1)
-    max_bound = maximum(_points, dims=1)
+    min_bound = vec(minimum(points, dims=1))
+    max_bound = vec(maximum(points, dims=1))
 
     paraboloid_scale, paraboloid_shift = if SCALElast != 0
         scale = last_newhigh / (last_high - last_low)
@@ -115,7 +117,7 @@ function DelaunayInfo(npoints::Int32, points)
     end
 
     # -1 indices if no neighbor
-    neighbors = -ones(Int, nsimplex, NDIM+1)
+    neighbors = -ones(Int32, nsimplex, NDIM+1)
     # indices of neighboring simplices
     for isimplex = 1:nsimplex
         v1,v2,v3 = simplices[:,isimplex]
@@ -136,7 +138,7 @@ function DelaunayInfo(npoints::Int32, points)
     # Literal translation of scipy/scipy/spatial/_qhull.pyx
     # TODO Combine this block with next one
     # TODO Convert this into a dict.
-    indptr_indices = [ Int64[] for _ = 1:npoints ]
+    indptr_indices = [ Int32[] for _ = 1:npoints ]
     for i = 1:nsimplex, j = 1:NDIM+1, k = 1:NDIM+1
         ki = simplices[k,i]
         ji = simplices[j,i]
@@ -148,8 +150,8 @@ function DelaunayInfo(npoints::Int32, points)
 
     # Literal translation of scipy/scipy/spatial/setlist.pxd:tocsr
     N = length(indptr_indices)+1
-    vertex_neighbors_indptr  = zeros(Int, N)
-    vertex_neighbors_indices = zeros(Int, sum(length, indptr_indices))
+    vertex_neighbors_indptr  = zeros(Int32, N)
+    vertex_neighbors_indices = zeros(Int32, sum(length, indptr_indices))
     pos = 1
     for i = 1:N-1
         vertex_neighbors_indptr[i] = pos
@@ -162,9 +164,10 @@ function DelaunayInfo(npoints::Int32, points)
 
     transform = get_barycentric_transforms(npoints, points, nsimplex, simplices, eps(Float64))
 
-    d = DelaunayInfo(npoints, points, nsimplex, simplices, neighbors, #=equations,=# transform,
+    d = DelaunayInfo(npoints, points,
+                     nsimplex, simplices, #=equations,=#
                      paraboloid_scale, paraboloid_shift, max_bound, min_bound,
-                     vertex_neighbors_indices, vertex_neighbors_indptr)
+                     neighbors, transform, vertex_neighbors_indices, vertex_neighbors_indptr)
     return d
 
 end
@@ -428,7 +431,8 @@ function Interpolator(npoints::Int, points, values;
         fill_value=NaN, tol=1e-6, maxiter=400, rescale=false)
 
     # TODO Scipy provides a rescale arg. We need that?
-    info = DelaunayInfo(npoints, points)
+    _points = reshape(float.(points), 2, npoints)
+    info = DelaunayInfo(_points)
     grad = estimate_gradients_2d_global(info, values, maxiter, tol)
 
     return Interpolator(info, values, grad, fill_value)
