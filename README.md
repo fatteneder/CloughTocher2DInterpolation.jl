@@ -1,6 +1,6 @@
 # CloughTocher2DInterpolation
 
-__Shamless and direct clone of scipy's CloughTocher2DInterpolator for Julia__
+__Shameless and direct clone of scipy's CloughTocher2DInterpolator for Julia__
 
 In particular, this package implements 
 [ `scipy.interpolate.CloughTocher2DInterpolator` ]( https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.CloughTocher2DInterpolator.html ).
