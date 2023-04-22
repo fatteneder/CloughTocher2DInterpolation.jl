@@ -377,21 +377,18 @@ function _estimate_gradients_2d_global(d::DelaunayInfo, data, maxiter, tol, y)
 end
 
 
+function estimate_gradients_2d_global(info, y::AbstractArray{T}, maxiter=400, tol=1e-6) where T<:Complex
+    rg = estimate_gradients_2d_global(info, real.(y), maxiter, tol)
+    ig = estimate_gradients_2d_global(info, imag.(y), maxiter, tol)
+    return rg + 1im * ig
+end
+
+
 function estimate_gradients_2d_global(info, y, maxiter=400, tol=1e-6)
 
-    length(y) != info.npoints && error("'y' has a wrong number of items")
+    # length(y) != info.npoints && error("'y' has a wrong number of items")
 
-    # TODO Dispatch on complex eltype of y and call estimate_gradients_2d_global on real, imag.
-    # if np.issubdtype(y.dtype, np.complexfloating):
-    #     rg = estimate_gradients_2d_global(tri, y.real, maxiter=maxiter, tol=tol)
-    #     ig = estimate_gradients_2d_global(tri, y.imag, maxiter=maxiter, tol=tol)
-    #     r = np.zeros(rg.shape, dtype=complex)
-    #     r.real = rg
-    #     r.imag = ig
-    #     return r
-
-    # TODO Use a matrix here to avoid reshaping later
-    grad = zeros(Float64, 2*info.npoints)
+    grad = zeros(Float64, 2, info.npoints)
 
     # scipy/scipy/interpolate/interpnd.pyx:estimate_gradients_2d_global
     # contains a useless loop 'for k in range(nvalues):` which only does one iteration
@@ -402,10 +399,7 @@ function estimate_gradients_2d_global(info, y, maxiter=400, tol=1e-6)
         @warn("Gradient estimation did not converge, the results may be inaccurate")
     end
 
-    # TODO Somehow transpose and reshape to something ...
-    # return yi.transpose(1, 0, 2).reshape(y_shape + (2,))
-
-    return reshape(grad, 2, Int(info.npoints))
+    return grad
 
 end
 
