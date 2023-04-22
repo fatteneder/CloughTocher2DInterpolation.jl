@@ -3,7 +3,7 @@
 __Shamless and direct clone of scipy's CloughTocher2DInterpolator for Julia__
 
 In particular, this package implements 
-(`scipy.interpolate.CloughTocher2DInterpolator`)[https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.CloughTocher2DInterpolator.html].
+[ `scipy.interpolate.CloughTocher2DInterpolator` ]( https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.CloughTocher2DInterpolator.html ).
 
 ## Usage
 
@@ -24,8 +24,8 @@ ip(ipoints)
 ## Acknowledgement
 
 To make this work we ported/cloned/copied parts of the following files from the
-(`scipy`)[https://github.com/scipy/scipy] repo
-((commit https://github.com/scipy/scipy/tree/445777598fc0e2cb96d9a506acb32b1d2655f80c)[https://github.com/scipy/scipy/tree/445777598fc0e2cb96d9a506acb32b1d2655f80c]):
+[ `scipy` ]( https://github.com/scipy/scipy ) repo
+([ commit https://github.com/scipy/scipy/tree/445777598fc0e2cb96d9a506acb32b1d2655f80c ]( https://github.com/scipy/scipy/tree/445777598fc0e2cb96d9a506acb32b1d2655f80c )):
 - `scipy/spatial/_qhull.pyx`
 - `scipy/interpolate/interpnd.pyx`
 - `scipy/spatial/tests/test__qhull.pyx`
