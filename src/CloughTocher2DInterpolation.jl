@@ -5,7 +5,7 @@ using MiniQhull
 using LinearAlgebra
 
 
-export interpolate
+export CloughTocher2DInterpolator
 
 
 const NDIM = 2
@@ -68,9 +68,6 @@ function DelaunayInfo(points::Matrix{Float64})
 
     dim, _npoints = size(points)
     npoints = Int32(_npoints)
-    if dim != NDIM
-        throw(ArgumentError("points must be organized as 2xnpoints matrix"))
-    end
 
     ## (Personal) Glossary
     # TODO Is this correct?
@@ -417,42 +414,74 @@ end
 
 
 
-mutable struct Interpolator
+struct CloughTocher2DInterpolator
     info::DelaunayInfo # triangulation
-    values
-    grad
-    fill_value
+    values::Vector{Float64}
+    grad::Matrix{Float64}
+    fill_value::Float64
     # offset
     # scale
 end
 
 
-function Interpolator(npoints::Int, points, values;
-        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false)
-
-    # TODO Scipy provides a rescale arg. We need that?
-    _points = reshape(float.(points), 2, npoints)
-    info = DelaunayInfo(_points)
-    grad = estimate_gradients_2d_global(info, values, maxiter, tol)
-
-    return Interpolator(info, values, grad, fill_value)
+function size_check(points::AbstractVector)
+    if length(points) % NDIM != 0
+        throw(ArgumentError("points must be of length 2*npoints"))
+    end
+end
+function size_check(points::AbstractMatrix)
+    if size(points)[1] != 2
+        throw(ArgumentError("points must be a matrix of size (2,npoints), found $(size(points))"))
+    end
 end
 
 
-function (I::Interpolator)(intrp_points)
+function CloughTocher2DInterpolator(points::AbstractVector, values::AbstractVector; kwargs...)
+    size_check(points)
+    npoints = Int32(length(points)/2)
+    return CloughTocher2DInterpolator(reshape(points,(2,npoints)), values; kwargs...)
+end
+
+
+function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector;
+        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false)
+
+    size_check(points)
+    if size(points)[2] != length(values)
+        throw(ArgumentError("mismatch between number of points and values, found $(size(points)[2]) vs. $(length(values))"))
+    end
+
+    # TODO Scipy provides a rescale arg. We need that?
+    info = DelaunayInfo(float.(points))
+    grad = estimate_gradients_2d_global(info, values, maxiter, tol)
+
+    return CloughTocher2DInterpolator(info, values, grad, fill_value)
+end
+
+
+
+function (I::CloughTocher2DInterpolator)(intrp_points)
+    size_check(intrp_points)
+    intrp_values = similar(intrp_points, Int(length(intrp_points)/2))
+    I(intrp_values, intrp_points) # inplace
+    return intrp_values
+end
+
+
+# interpolate inplace of intrp_values
+function (I::CloughTocher2DInterpolator)(intrp_values::AbstractVector, _intrp_points)
+
+    size_check(_intrp_points)
+    n_intrp_points = Int(length(_intrp_points)/2)
+    intrp_points = reshape(_intrp_points, 2, n_intrp_points)
+    n_intrp_values = length(intrp_values)
+    if n_intrp_values != n_intrp_points
+        resize!(intrp_values, n_intrp_values)
+    end
 
     buffer_c  = zeros(3)
     buffer_f  = zeros(3)
     buffer_df = zeros(6)
-
-    @assert length(intrp_points) % NDIM == 0
-    npoints = Int(length(intrp_points)/2)
-    intrp_points = reshape(intrp_points, 2, npoints)
-    info = I.info
-    nvalues = length(I.values)
-    simplices = info.simplices
-
-    out = zeros(eltype(I.values), npoints)
 
     eeps = 100 * eps(Float64)
     eeps_broad = sqrt(eeps)
@@ -462,28 +491,24 @@ function (I::Interpolator)(intrp_points)
         # scipy uses qhull._find_simplex here, which we can't, because we can't
         # extract the hyperplane normals and offsets that define the facets
         # (these are grouped under self.equations in DelaunyInfo_t)
-        isimplex = _find_simplex_bruteforce(info, buffer_c, pt, eeps, eeps_broad)
+        isimplex = _find_simplex_bruteforce(I.info, buffer_c, pt, eeps, eeps_broad)
 
         # Clough-Tocher interpolation
         if isimplex == -1
-            out[i] = I.fill_value
+            intrp_values[i] = I.fill_value
             continue
         end
 
-        # for k = 1:npoints
-            for j = 1:NDIM+1
-                is = simplices[j,isimplex]
-                buffer_f[j]      = I.values[is]
-                buffer_df[2*j-1] = I.grad[1,is]
-                buffer_df[2*j+0] = I.grad[2,is]
-            end
-            w = _clough_tocher_2d_single(info, isimplex, buffer_c, buffer_f, buffer_df)
-            out[i] = w
-        # end
+        for j = 1:NDIM+1
+            is               = I.info.simplices[j,isimplex]
+            buffer_f[j]      = I.values[is]
+            buffer_df[2*j-1] = I.grad[1,is]
+            buffer_df[2*j+0] = I.grad[2,is]
+        end
+        w = _clough_tocher_2d_single(I.info, isimplex, buffer_c, buffer_f, buffer_df)
+        intrp_values[i] = w
 
     end
-
-    return out
 
 end
 
