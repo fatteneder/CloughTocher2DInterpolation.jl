@@ -14,17 +14,19 @@ const NDIM = 2
 
 function __precompie__()
 
-    coordinates = [0,0,
-                   0,1,
-                   1,0,
-                   1,1,
-                   2,0,
-                   2,1]
-    values = Float64[1,2,3,4,5,6]
-    I = CloughTocher2DInterpolator(coordinates, values)
-    icoords = [0.5, 0.5,
-               1.5, 0.5]
-    I(icoords)
+    points = Float64[0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+
+    # real
+    values = Float64[1,   2,   3,   4,   5,   6]
+    ip = CloughTocher2DInterpolator(coordinates, values)
+    icoords = [0.5,0.5, 1.5,0.5]
+    ip(icoords)
+
+    # complex
+    values = Float64[1+2im,   2+3im,   3-1im,   4-0.5im,   5-3im,   6+5im]
+    ip = CloughTocher2DInterpolator(coordinates, values)
+    icoords = [0.5,0.5, 1.5,0.5]
+    ip(icoords)
 
 end
 
