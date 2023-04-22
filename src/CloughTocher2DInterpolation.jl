@@ -85,6 +85,16 @@ struct DelaunayInfo
 end
 
 
+function DelaunayInfo(points::AbstractVector{<:Real})
+    size_check(points)
+    return DelaunayInfo(reshape(float.(points), 2, Int(length(points)/2)))
+end
+function DelaunayInfo(points::AbstractVector{<:Complex})
+    size_check(points)
+    return DelaunayInfo(reshape(complex.(points), 2, Int(length(points)/2)))
+end
+
+
 function DelaunayInfo(points::Matrix{Float64})
 
     dim, _npoints = size(points)
@@ -258,11 +268,12 @@ end
 
 function _estimate_gradients_2d_global(d::DelaunayInfo, data, maxiter, tol, y)
 
-    Q = zeros(2*2)
-    s = zeros(2)
-    r = zeros(2)
+    T = eltype(data)
+    Q = zeros(Float64, 2*2)
+    s = zeros(T, 2)
+    r = zeros(T, 2)
 
-    fill!(y, 0)
+    fill!(y, zero(T))
 
     ### Comment from scipy
     # Main point:
@@ -330,8 +341,8 @@ function _estimate_gradients_2d_global(d::DelaunayInfo, data, maxiter, tol, y)
     for iiter in 1:maxiter
         err = 0
         for ipoint = 1:d.npoints
-            fill!(Q, 0)
-            fill!(s, 0)
+            fill!(Q, zero(T))
+            fill!(s, zero(T))
 
             # walk over neighbours of given point
             for jpoint2 in d.vertex_neighbors_indptr[ipoint]:d.vertex_neighbors_indptr[ipoint+1]-1
@@ -398,7 +409,7 @@ function estimate_gradients_2d_global(info, y, maxiter=400, tol=1e-6)
 
     # length(y) != info.npoints && error("'y' has a wrong number of items")
 
-    grad = zeros(Float64, 2, info.npoints)
+    grad = zeros(eltype(y), 2, info.npoints)
 
     # scipy/scipy/interpolate/interpnd.pyx:estimate_gradients_2d_global
     # contains a useless loop 'for k in range(nvalues):` which only does one iteration
@@ -417,13 +428,26 @@ end
 
 
 
-struct CloughTocher2DInterpolator
+struct CloughTocher2DInterpolator{T<:Number}
     info::DelaunayInfo # triangulation
-    values::Vector{Float64}
-    grad::Matrix{Float64}
-    fill_value::Float64
+    values::Vector{T}
+    grad::Matrix{T}
+    fill_value::T
     # offset
     # scale
+    function CloughTocher2DInterpolator(info, values, grad, fill_value)
+        vT = eltype(values)
+        gT = eltype(grad)
+        fT = eltype(fill_value)
+        T = promote_type(vT, gT, fT)
+        if T <: Real
+            return new{T}(info, float.(values), float.(grad), float(fill_value))
+        elseif T <: Complex
+            return new{T}(info, complex.(values), complex.(grad), complex(fill_value))
+        else
+            throw(ArgumentError("failed to normalize types of data fields, can't handle $T"))
+        end
+    end
 end
 
 
@@ -446,8 +470,8 @@ function CloughTocher2DInterpolator(points::AbstractVector, values::AbstractVect
 end
 
 
-function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector;
-        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false)
+function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector{T};
+        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false) where T
 
     size_check(points)
     if size(points)[2] != length(values)
@@ -456,7 +480,8 @@ function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVect
 
     # TODO Scipy provides a rescale arg. We need that?
     info = DelaunayInfo(float.(points))
-    grad = estimate_gradients_2d_global(info, values, maxiter, tol)
+    vals = T<:Real ? float.(values) : complex.(float.(real.(values)), float.(imag.(values)))
+    grad = estimate_gradients_2d_global(info, vals, maxiter, tol)
 
     return CloughTocher2DInterpolator(info, values, grad, fill_value)
 end
@@ -467,16 +492,16 @@ end
 
 
 
-function (I::CloughTocher2DInterpolator)(intrp_points)
+function (I::CloughTocher2DInterpolator{T})(intrp_points) where T
     size_check(intrp_points)
-    intrp_values = similar(intrp_points, Int(length(intrp_points)/2))
+    intrp_values = similar(intrp_points, T, Int(length(intrp_points)/2))
     I(intrp_values, intrp_points) # inplace
     return intrp_values
 end
 
 
 # interpolate inplace of intrp_values
-function (I::CloughTocher2DInterpolator)(intrp_values::AbstractVector, _intrp_points)
+function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _intrp_points) where T
 
     size_check(_intrp_points)
     n_intrp_points = Int(length(_intrp_points)/2)
@@ -486,9 +511,9 @@ function (I::CloughTocher2DInterpolator)(intrp_values::AbstractVector, _intrp_po
         resize!(intrp_values, n_intrp_values)
     end
 
-    buffer_c  = zeros(3)
-    buffer_f  = zeros(3)
-    buffer_df = zeros(6)
+    buffer_c  = zeros(Float64, 3)
+    buffer_f  = zeros(T, 3)
+    buffer_df = zeros(T, 6)
 
     eeps = 100 * eps(Float64)
     eeps_broad = sqrt(eeps)
