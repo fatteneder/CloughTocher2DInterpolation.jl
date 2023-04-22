@@ -125,8 +125,8 @@ function DelaunayInfo(points::Matrix{Float64})
 
     nsimplex = Int32(size(simplices)[2])
 
-    min_bound = vec(minimum(points, dims=1))
-    max_bound = vec(maximum(points, dims=1))
+    min_bound = vec(minimum(points, dims=2))
+    max_bound = vec(maximum(points, dims=2))
 
     paraboloid_scale, paraboloid_shift = if SCALElast != 0
         scale = last_newhigh / (last_high - last_low)
@@ -929,10 +929,8 @@ function _is_point_fully_outside(d, x, eps)
     Is the point outside the bounding box of the triangulation?
 
     """
-    for i in NDIM
-        xi = x[i]
-        (xi < d.min_bound[i] - eps || xi > d.max_bound[i] + eps) && return true
-    end
+    (x[1] < d.min_bound[1] - eps || x[1] > d.max_bound[1] + eps) && return true
+    (x[2] < d.min_bound[2] - eps || x[2] > d.max_bound[2] + eps) && return true
     return false
 end
 
