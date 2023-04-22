@@ -4,11 +4,31 @@ module CloughTocher2DInterpolation
 using MiniQhull
 using LinearAlgebra
 
-
 export CloughTocher2DInterpolator
 
 
+
 const NDIM = 2
+
+
+
+function __precompie__()
+
+    coordinates = [0,0,
+                   0,1,
+                   1,0,
+                   1,1,
+                   2,0,
+                   2,1]
+    values = Float64[1,2,3,4,5,6]
+    I = CloughTocher2DInterpolator(coordinates, values)
+    icoords = [0.5, 0.5,
+               1.5, 0.5]
+    I(icoords)
+
+end
+
+
 
 
 
@@ -34,6 +54,7 @@ function my_delaunay(dim::Int32, numpoints::Int32, points::Array{Float64},
     ierror != 0 && error("Failure on delaunay_free function")
     cells, last_newhigh, last_high, last_low, SCALElast
 end
+
 
 
 
@@ -246,6 +267,10 @@ function get_barycentric_transforms(npoints, _points, nsimplex, simplices, eps)
 end
 
 
+
+
+
+
 function _estimate_gradients_2d_global(d::DelaunayInfo, data, maxiter, tol, y)
 
     Q = zeros(2*2)
@@ -454,6 +479,10 @@ end
 
 
 
+
+
+
+
 function (I::CloughTocher2DInterpolator)(intrp_points)
     size_check(intrp_points)
     intrp_values = similar(intrp_points, Int(length(intrp_points)/2))
@@ -505,6 +534,9 @@ function (I::CloughTocher2DInterpolator)(intrp_values::AbstractVector, _intrp_po
     end
 
 end
+
+
+
 
 
 
