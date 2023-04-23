@@ -66,9 +66,12 @@ struct DelaunayInfo
 end
 
 
-function DelaunayInfo(points::AbstractVector{<:Real})
+function DelaunayInfo(points::AbstractArray{<:Integer})
+    return DelaunayInfo(float.(points))
+end
+function DelaunayInfo(points::AbstractArray{<:AbstractFloat})
     size_check(points)
-    return DelaunayInfo(reshape(float.(points), 2, Int(length(points)/2)))
+    return DelaunayInfo(reshape(points, 2, Int(length(points)/2)))
 end
 
 
@@ -429,13 +432,6 @@ function size_check(points::AbstractMatrix)
 end
 
 
-function CloughTocher2DInterpolator(points::AbstractVector, values::AbstractVector; kwargs...)
-    size_check(points)
-    npoints = Int32(length(points)/2)
-    return CloughTocher2DInterpolator(reshape(points,(2,npoints)), values; kwargs...)
-end
-
-
 """
     CloughTocher2DInterpolator(points, values; kwargs...)
 
@@ -468,20 +464,33 @@ ip = CloughTocher2DInterpolator(points, values)
 ip(ipoints)
 ```
 """
-function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector{T};
-        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false) where T
+function CloughTocher2DInterpolator(points::AbstractMatrix, values::T;
+        fill_value=NaN, tol=1e-6, maxiter=400, rescale=false) where T<:AbstractVector{<:Union{AbstractFloat,Complex{<:AbstractFloat}}}
 
     size_check(points)
     if size(points)[2] != length(values)
         throw(ArgumentError("mismatch between number of points and values, found $(size(points)[2]) vs. $(length(values))"))
     end
 
-    # TODO Scipy provides a rescale arg. We need that?
-    info = DelaunayInfo(float.(points))
-    vals = T<:Real ? float.(values) : complex.(float.(real.(values)), float.(imag.(values)))
-    grad = estimate_gradients_2d_global(info, vals, maxiter, tol)
 
-    return CloughTocher2DInterpolator(info, values, grad, fill_value)
+    info = DelaunayInfo(points)
+    grad = estimate_gradients_2d_global(info, values, maxiter, tol)
+
+end
+
+
+function CloughTocher2DInterpolator(points::AbstractVector, values; kwargs...)
+    size_check(points)
+    npoints = Int(length(points)/2)
+    return CloughTocher2DInterpolator(reshape(points,(2,npoints)), values; kwargs...)
+end
+
+function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector{<:Integer}; kwargs...)
+    CloughTocher2DInterpolator(points, float.(values); kwargs...)
+end
+
+function CloughTocher2DInterpolator(points::AbstractMatrix, values::AbstractVector{<:Complex{<:Integer}}; kwargs...)
+    CloughTocher2DInterpolator(points, convert.(Complex{Float64},values); kwargs...)
 end
 
 
@@ -578,7 +587,6 @@ end
 function _find_simplex_bruteforce(d, c, x, eps, eps_broad)
 
     if _is_point_fully_outside(d, x, eps)
-        println("are we here?")
         return -1
     end
 
