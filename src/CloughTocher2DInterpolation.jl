@@ -208,10 +208,10 @@ function get_barycentric_transforms(npoints, _points, nsimplex, simplices, eps)
     # simplices are layed out as ndims x nsimplices
     for isimplex = 1:nsimplex
         fill!(Tinv, 0.0)
+        s_n = simplices[end,isimplex]
         for i = 1:NDIM
             for j = 1:NDIM
                 s_j = simplices[j,isimplex]
-                s_n = simplices[end,isimplex]
                 T[i,j] = points[i,s_j] - points[i,s_n]
             end
             Tinv[i,i] = 1
@@ -397,25 +397,19 @@ end
 
 
 
-struct CloughTocher2DInterpolator{T<:Union{AbstractFloat,Complex}}
+struct CloughTocher2DInterpolator{T<:Union{AbstractFloat,Complex{<:AbstractFloat}}}
     info::DelaunayInfo # triangulation
     values::Vector{T}
     grad::Matrix{T}
     fill_value::T
-    # offset
-    # scale
-    function CloughTocher2DInterpolator(info, values, grad, fill_value)
+    offset::Vector{Float64}
+    scale::Vector{Float64}
+    function CloughTocher2DInterpolator(info, values, grad, fill_value, offset, scale)
         vT = eltype(values)
         gT = eltype(grad)
         fT = eltype(fill_value)
-        T = promote_type(vT, gT, fT)
-        if T <: Real
-            return new{T}(info, float.(values), float.(grad), float(fill_value))
-        elseif T <: Complex
-            return new{T}(info, complex.(values), complex.(grad), complex(fill_value))
-        else
-            throw(ArgumentError("failed to normalize types of data fields, can't handle $T"))
-        end
+        T = promote_type(vT, gT, fT, Float64)
+        return new{T}(info, values, grad, fill_value, offset, scale)
     end
 end
 
@@ -472,10 +466,23 @@ function CloughTocher2DInterpolator(points::AbstractMatrix, values::T;
         throw(ArgumentError("mismatch between number of points and values, found $(size(points)[2]) vs. $(length(values))"))
     end
 
+    offset, scale = if rescale
+        npoints = size(points)[2]
+        offset = vec(sum(points, dims=2)) ./ npoints
+        minmaxs = extrema(points, dims=2)
+        scale = [ minmaxs[i][2]-minmaxs[i][1] for i = 1:NDIM ]
+        scale[scale .<= 0] .= 1.0 # avoid divisions by 0
+        # don't store inplace, because that would mutate the caller's array
+        points = (points .- offset) ./ scale
+        offset, scale
+    else
+        [0.0,0.0], [1.0,1.0]
+    end
 
     info = DelaunayInfo(points)
     grad = estimate_gradients_2d_global(info, values, maxiter, tol)
 
+    return CloughTocher2DInterpolator(info, values, grad, fill_value, offset, scale)
 end
 
 
@@ -522,16 +529,19 @@ function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _in
     buffer_c  = zeros(Float64, 3)
     buffer_f  = zeros(T, 3)
     buffer_df = zeros(T, 6)
+    rescaled_pt = zeros(Float64, 2)
 
     eeps = 100 * eps(Float64)
     eeps_broad = sqrt(eeps)
 
     for (i,pt) in enumerate(eachcol(intrp_points))
 
+        @. rescaled_pt = (pt - I.offset) / I.scale
+
         # scipy uses qhull._find_simplex here, which we can't, because we can't
         # extract the hyperplane normals and offsets that define the facets
         # (these are grouped under self.equations in DelaunyInfo_t) from the qhull wrapper
-        isimplex = _find_simplex_bruteforce(I.info, buffer_c, pt, eeps, eeps_broad)
+        isimplex = _find_simplex_bruteforce(I.info, buffer_c, rescaled_pt, eeps, eeps_broad)
 
         # Clough-Tocher interpolation
         if isimplex == -1
@@ -636,13 +646,13 @@ end
 
 # scipy/spatial/_qhull.pyx: _barycentric_coordinates
 function _barycentric_coordinates(transform, x, c)
-    c[NDIM] = 1.0
+    c[NDIM+1] = 1.0
     for i = 1:NDIM
         c[i] = 0
         for j in 1:NDIM
-            c[i] += transform[j,i] * (x[j] - transform[j,NDIM])
+            c[i] += transform[i,j] * (x[j] - transform[NDIM+1,j])
         end
-        c[NDIM] -= c[i]
+        c[NDIM+1] -= c[i]
     end
 end
 
