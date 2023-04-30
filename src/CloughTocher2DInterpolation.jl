@@ -4,6 +4,7 @@ module CloughTocher2DInterpolation
 using MiniQhull
 using LinearAlgebra
 using SnoopPrecompile
+using StaticArrays
 
 export CloughTocher2DInterpolator
 
@@ -526,10 +527,10 @@ function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _in
         resize!(intrp_values, n_intrp_values)
     end
 
-    buffer_c  = zeros(Float64, 3)
-    buffer_f  = zeros(T, 3)
-    buffer_df = zeros(T, 6)
-    rescaled_pt = zeros(Float64, 2)
+    buffer_c    = MVector{3,Float64}(0,0,0)
+    buffer_f    = MVector{3,T}(0,0,0)
+    buffer_df   = MVector{6,T}(0,0,0,0,0,0)
+    rescaled_pt = MVector{2,Float64}(0,0)
 
     eeps = 100 * eps(Float64)
     eeps_broad = sqrt(eeps)
@@ -645,7 +646,7 @@ end
 
 
 # scipy/spatial/_qhull.pyx: _barycentric_coordinates
-function _barycentric_coordinates(transform, x, c)
+@inline function _barycentric_coordinates(transform, x, c)
     c[NDIM+1] = 1.0
     for i = 1:NDIM
         c[i] = 0
@@ -757,9 +758,9 @@ function _clough_tocher_2d_single(d::DelaunayInfo, isimplex, b, f, df)
     # peek into neighbouring triangles.
     #
 
-    y = zeros(Float64, 2)
-    c = zeros(Float64, 3)
-    g = zeros(Float64, 3)
+    y = MVector{2,Float64}(0.0,0.0)
+    c = MVector{3,Float64}(0.0,0.0,0.0)
+    g = MVector{3,Float64}(0.0,0.0,0.0)
     for k = 1:3
         itri = d.neighbors[3*(isimplex-1) + k]
 
