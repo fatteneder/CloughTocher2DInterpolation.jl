@@ -432,7 +432,7 @@ end
 
 Setup a Clough-Tocher 2D interpolator for a given cloud of `points` and `values`.
 
-`points` holds the data in "component major order". e.g. a singel triagnale with
+`points` holds the data in "component major order". E.g. a single triangle with
 points `(0,0), (1,0), (0,1)` is encoded as `points = [ 0,0, 1,0, 0,1 ]`.
 
 Available keyword arguments:
