@@ -12,7 +12,7 @@ import CloughTocher2DInterpolation: DelaunayInfo, find_simplex, NDIM
 ### scipy/spatial/tests/test_qhull: TestUtilities::find_simplex
 @testset "DelaunayInfo: find simplices" begin
 
-    pts = [0,0,0,1,1,1,1,0]
+    pts = [0,0, 0,1, 1,1, 1,0]
     d = DelaunayInfo(pts)
     @test d.simplices == [2 4 3; 4 2 1]'
 
@@ -125,6 +125,88 @@ end
     d = DelaunayInfo(pathological_data_2)
     @test maximum(d.points[d.simplices]) ≈ maximum(pathological_data_2)
     @test minimum(d.points[d.simplices]) ≈ minimum(pathological_data_2)
+
+end
+
+
+function _check_barycentric_transforms(tri::DelaunayInfo; unit_cube=false, unit_cube_tol=0)
+
+        # Check that a triangulation has reasonable barycentric transforms
+        vertices = [ tri.points[:,simp] for simp in eachcol(tri.simplices) ]
+        sc = 1/(NDIM + 1.0)
+        centroids = reduce(hcat, sum(vs,dims=2) for vs in vertices) .* sc
+
+        # Either: (i) the simplex has a `nan` barycentric transform,
+        # or, (ii) the centroid is in the simplex
+
+        # function barycentric_transform(tr, x)
+        #     # r = tr[:,-1,:]
+        #     # Tinv = tr[:,:-1,:]
+        #     # return np.einsum('ijk,ik->ij', Tinv, x - r)
+        # end
+        #
+        # eeps = eps(Float64)
+        #
+        # c = barycentric_transform(tri.transform, centroids)
+        # @test isnan.(
+        # # with np.errstate(invalid="ignore"):
+        # #     ok = np.isnan(c).all(axis=1) | (abs(c - sc)/sc < 0.1).all(axis=1)
+        #
+        # assert_(ok.all(), f"{err_msg} {np.nonzero(~ok)}")
+
+        # # Invalid simplices must be (nearly) zero volume
+        # q = vertices[:,:-1,:] - vertices[:,-1,None,:]
+        # volume = np.array([np.linalg.det(q[k,:,:])
+        #                    for k in range(tri.nsimplex)])
+        # ok = np.isfinite(tri.transform[:,0,0]) | (volume < np.sqrt(eps))
+        # assert_(ok.all(), f"{err_msg} {np.nonzero(~ok)}")
+
+        # Also, find_simplex for the centroid should end up in some
+        # simplex for the non-degenerate cases
+        js = find_simplex(tri, centroids)#, bruteforce=true)
+        @test all(j -> j >= -1, js)
+
+        if unit_cube
+            # # If in unit cube, no interior point should be marked out of hull
+            at_boundary = [ any(c .<= unit_cube_tol) || any(c .>= 1 - unit_cube_tol)
+                            for c in eachcol(centroids) ]
+
+            @test all(zip(js,at_boundary,eachcol(centroids))) do (j,at_bdry,cs)
+                j != -1 || at_bdry
+            end
+        end
+
+        return centroids, tri
+end
+
+
+@testset "Delaunay: test_more_barycentric_transforms" begin
+
+    # triangulate some "nasty" grids
+    eeps = eps(Float64)
+    npoints = 70
+
+    # generate a uniform grid in 2d unit cube
+    x = collect(range(0,1,length=npoints))
+    grid = zeros(Float64, 2, npoints^2)
+    grid[1,:] = repeat(x, inner=npoints)
+    grid[2,:] = repeat(x, outer=npoints)
+
+    # check using regular grid
+    tri = DelaunayInfo(grid)
+    _check_barycentric_transforms(tri, unit_cube=true)
+
+    # check with eps-perturbations
+    mt = Random.MersenneTwister(1234)
+    m = rand(mt, size(grid)[2]) .< 0.2
+    grid[:,m] .+= 2 * eeps * rand(size(grid[:,m])) .- 0.5
+
+    tri = DelaunayInfo(grid)
+    _check_barycentric_transforms(tri, unit_cube=true, unit_cube_tol=2*eeps)
+
+    # check with duplicated data
+    tri = DelaunayInfo(hcat(grid, grid))
+    _check_barycentric_transforms(tri, unit_cube=true, unit_cube_tol=2*eeps)
 
 end
 

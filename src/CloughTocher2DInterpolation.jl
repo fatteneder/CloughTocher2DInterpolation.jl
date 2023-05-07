@@ -52,7 +52,6 @@ struct DelaunayInfo
     # from qhull
     nsimplex::Int32
     simplices::Matrix{Int32}
-    # equations
     paraboloid_scale::Float64
     paraboloid_shift::Float64
     max_bound::Vector{Float64}
@@ -61,6 +60,8 @@ struct DelaunayInfo
     # manually computed
     neighbors::Matrix{Int32}
     transform::Array{Float64,3}
+    normals::Matrix{Float64}
+    offset::Vector{Float64}
     vertex_neighbors_indices::Vector{Int32}
     vertex_neighbors_indptr::Vector{Int32}
 
@@ -163,10 +164,34 @@ function DelaunayInfo(points::Matrix{Float64})
         throw(ErrorException("encountered NaNs when computing barycentric transformations"))
     end
 
+    # computing hyperplane equations 'manually', because we can't extract this info from
+    # a qhull_handler from libqhull_r, because one would have to iterate through
+    # a list of facetT structs to grab the data, which would require some cwrappers
+    # instead we stichted together the computation based on
+    # https://github.com/scipy/scipy/blob/fdea3a89fe0a823c1f0652e78c76f707571b0ea1/scipy/spatial/tests/test_qhull.py#L195-L220
+    lifted_points = zeros(Float64, (3,npoints))
+    @views lifted_points[1:2,:] .= points
+    @views @. lifted_points[3,:] = $sum(points^2,dims=1)[:]
+    @views @. lifted_points[3,:] *= paraboloid_scale
+    @views @. lifted_points[3,:] += paraboloid_shift
+    normals = zeros(Float64, (3,nsimplex))
+    offset = zeros(Float64, nsimplex)
+    for (i,simp) in enumerate(eachcol(simplices))
+        x1 = view(lifted_points, :, simp[1])
+        x2 = view(lifted_points, :, simp[2])
+        x3 = view(lifted_points, :, simp[3])
+        n = cross(x1.-x3,x2.-x3)
+        n ./= norm(n)
+        n[3] != 0.0 && (n .*= -sign(n[3]))
+        @views normals[:,i] .= n
+        offset[i] = - dot(n,x3)
+    end
+
     d = DelaunayInfo(npoints, points,
-                     nsimplex, simplices, #=equations,=#
+                     nsimplex, simplices,
                      paraboloid_scale, paraboloid_shift, max_bound, min_bound,
-                     neighbors, transform, vertex_neighbors_indices, vertex_neighbors_indptr)
+                     neighbors, transform, normals, offset,
+                     vertex_neighbors_indices, vertex_neighbors_indptr)
     return d
 
 end
@@ -394,6 +419,48 @@ function estimate_gradients_2d_global(info, y, maxiter=400, tol=1e-6)
 end
 
 
+# scipy/scipy/interpolate/_qhull.pyx: _lift_point
+@inline function _lift_point(d::DelaunayInfo, x, z)
+    z[NDIM+1] = 0
+    for i = 1:NDIM
+        z[i] = x[i]
+        z[NDIM+1] += x[i]^2
+    end
+    z[NDIM+1] *= d.paraboloid_scale
+    z[NDIM+1] += d.paraboloid_shift
+end
+
+
+# scipy/scipy/interpolate/_qhull.pyx: _distplane
+function _distplane(d::DelaunayInfo, isimplex, pt)
+    dist = d.offset[isimplex]
+    dist += dot(view(d.normals, :, isimplex), pt)
+    return dist
+end
+
+
+function lift_points(d::DelaunayInfo, z::AbstractVector)
+    size_check(z)
+    npoints = Int(length(z)/2)
+    zz = reshape(z, (2,npoints))
+    return _lift_points(d, zz)
+end
+function lift_points(d::DelaunayInfo, z::AbstractMatrix)
+    size_check(z)
+    return _lift_points(d, z)
+end
+function _lift_points(d::DelaunayInfo, pts::AbstractMatrix)
+    _, npoints = size(pts)
+    lpts = zeros(Float64, (NDIM+1,npoints))
+    for (lp,p) in zip(eachcol(lpts), eachcol(pts))
+        _lift_point(d, p, lp)
+    end
+    return lpts
+end
+
+
+
+
 
 
 
@@ -534,15 +601,15 @@ function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _in
 
     eeps = 100 * eps(Float64)
     eeps_broad = sqrt(eeps)
+    start = Ref(1)
 
     for (i,pt) in enumerate(eachcol(intrp_points))
-
         @. rescaled_pt = (pt - I.offset) / I.scale
 
         # scipy uses qhull._find_simplex here, which we can't, because we can't
         # extract the hyperplane normals and offsets that define the facets
         # (these are grouped under self.equations in DelaunyInfo_t) from the qhull wrapper
-        isimplex = _find_simplex_bruteforce(I.info, buffer_c, rescaled_pt, eeps, eeps_broad)
+        isimplex = _find_simplex(I.info, buffer_c, rescaled_pt, start, eeps, eeps_broad)
 
         # Clough-Tocher interpolation
         if isimplex == -1
@@ -564,19 +631,14 @@ function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _in
 end
 
 
-function find_simplex(d::DelaunayInfo, pt::NTuple{2}, tol=nothing)
-    eeps = isnothing(tol) ? 100 * eps(Float64) : tol
-    eeps_broad = sqrt(eeps)
-    buffer_c = zeros(Float64, 3)
-    isimplex = _find_simplex_bruteforce(d, buffer_c, pt, eeps, eeps_broad)
-    return isimplex
+# for a single point
+function find_simplex(d::DelaunayInfo, pt::NTuple{2,T}, tol=nothing; kwargs...) where T
+    return find_simplex(d, SMatrix{2,1,T}(pt), tol; kwargs...) |> first
 end
 
 
-# stripped down version of scipy/spatial/_qhull.pyx: find_simplex
-# because we don't can't implement _find_simplex_directed, due to not having
-# access to qhull's facets; instead we alawys use the bruteforce version
-function find_simplex(d::DelaunayInfo, _points::AbstractArray, tol=nothing)
+# scipy/spatial/_qhull.pyx: find_simplex
+function find_simplex(d::DelaunayInfo, _points::AbstractArray, tol=nothing; bruteforce=false)
 
     size_check(_points)
     npoints = Int(length(_points)/2)
@@ -587,8 +649,12 @@ function find_simplex(d::DelaunayInfo, _points::AbstractArray, tol=nothing)
 
     buffer_c = zeros(3)
 
-    isimplices = [ _find_simplex_bruteforce(d, buffer_c, pt, eeps, eeps_broad)
-                   for pt in points ]
+    isimplices = if bruteforce
+        [ _find_simplex_bruteforce(d, buffer_c, pt, eeps, eeps_broad) for pt in eachcol(points) ]
+    else
+        start = Ref(1)
+        [ _find_simplex(d, buffer_c, pt, start, eeps, eeps_broad) for pt in eachcol(points) ]
+    end
 
     return isimplices
 end
@@ -620,6 +686,198 @@ function _find_simplex_bruteforce(d, c, x, eeps, eeps_broad)
 end
 
 
+# scipy/spatial/_qhull.pyx: _find_simplex_directed
+function _find_simplex_directed(d, c, x, start, eeps, eeps_broad)
+    ### from scipy docs
+    #
+    # Find simplex containing point `x` via a directed walk in the tessellation.
+    #
+    # If the simplex is found, the array `c` is filled with the corresponding
+    # barycentric coordinates.
+    #
+    # Notes
+    # -----
+    #
+    # The idea here is the following:
+    #
+    # 1) In a simplex, the k-th neighbour is opposite the k-th vertex.
+    #    Call the ridge between them the k-th ridge.
+    #
+    # 2) If the k-th barycentric coordinate of the target point is negative,
+    #    then the k-th vertex and the target point lie on the opposite sides
+    #    of the k-th ridge.
+    #
+    # 3) Consequently, the k-th neighbour simplex is *closer* to the target point
+    #    than the present simplex, if projected on the normal of the k-th ridge.
+    #
+    # 4) In a regular tessellation, hopping to any such direction is OK.
+    #
+    #    Also, if one of the negative-coordinate neighbors happens to be -1,
+    #    then the target point is outside the tessellation (because the
+    #    tessellation is convex!).
+    #
+    # 5) If all barycentric coordinates are in [-eps, 1+eps], we have found the
+    #    simplex containing the target point.
+    #
+    # 6) If all barycentric coordinates are non-negative but 5) is not true,
+    #    we are in an inconsistent situation -- this should never happen.
+    #
+    # This may however enter an infinite loop due to rounding errors in
+    # the computation of the barycentric coordinates, so the iteration
+    # count needs to be limited, and a fallback to brute force provided.
+
+    isimplex = start[]
+
+    if isimplex < 1 || isimplex > d.nsimplex
+        isimplex = 1
+    end
+
+    transp_neighbors = transpose(d.neighbors)
+
+    #### comment from scipy implementation
+    # The maximum iteration count: it should be large enough so that
+    # the algorithm usually succeeds, but smaller than nsimplex so
+    # that for the cases where the algorithm fails, the main cost
+    # still comes from the brute force search.
+
+    for _ = 1:div(d.nsimplex,4)+1
+        isimplex == -1 && break
+
+        # transform = d.transform + isimplex*ndim*(ndim+1)
+        transform = view(d.transform,isimplex,:,:)
+
+        inside = 1
+        # for k in range(ndim+1)
+        for k = 1:NDIM+1
+            _barycentric_coordinate_single(transform, x, c, k)
+
+            if c[k] < -eeps
+                # The target point is in the direction of neighbor `k`!
+                m = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
+                if m == -1
+                    # The point is outside the triangulation: bail out
+                    start[] = isimplex
+                    return -1
+                end
+
+                isimplex = m
+                inside = -1
+                break
+            elseif c[k] <= 1 + eeps
+                # we're inside this simplex
+                # nothing to do
+            else
+                # we're outside (or the coordinate is nan; a degenerate simplex)
+                inside = 0
+            end
+        end
+
+        if inside == -1
+            # hopped to another simplex
+            continue
+        elseif inside == 1
+            # we've found the right one!
+            break
+        else
+            # we've failed utterly (degenerate simplices in the way).
+            # fall back to brute force
+            isimplex = _find_simplex_bruteforce(d, c, x, eeps, eeps_broad)
+            break
+        end
+
+    end
+
+    start[] = isimplex
+    return isimplex
+end
+
+
+# scipy/spatial/_qhull.pyx: _find_simplex
+function _find_simplex(d, c, x, start, eeps, eeps_broad)
+    ### from scipy docs
+    #
+    # Find simplex containing point `x` by walking the triangulation.
+    #
+    # Notes
+    # -----
+    # This algorithm is similar as used by ``qh_findbest``.  The idea
+    # is the following:
+    #
+    # 1. Delaunay triangulation is a projection of the lower half of a convex
+    #    hull, of points lifted on a paraboloid.
+    #
+    #    Simplices in the triangulation == facets on the convex hull.
+    #
+    # 2. If a point belongs to a given simplex in the triangulation,
+    #    its image on the paraboloid is on the positive side of
+    #    the corresponding facet.
+    #
+    # 3. However, it is not necessarily the *only* such facet.
+    #
+    # 4. Also, it is not necessarily the facet whose hyperplane distance
+    #    to the point on the paraboloid is the largest.
+    #
+    # In this algorithm, we walk around the tessellation trying to locate
+    # a positive-distant facet. After finding one, we fall back to a
+    # directed search.
+
+    _is_point_fully_outside(d, x, eeps) && return -1
+    d.nsimplex <= 0 && return -1
+
+    isimplex = start[]
+
+    if isimplex < 1 || isimplex > d.nsimplex
+        isimplex = 1
+    end
+
+    # Lift point to paraboloid
+    z = MVector{3,Float64}(0.0,0.0,0.0)
+    _lift_point(d, x, z)
+
+    transp_neighbors = transpose(d.neighbors)
+
+    # Walk the tessellation searching for a facet with a positive planar distance
+    best_dist = _distplane(d, isimplex, z)
+    changed = 1
+    while changed == 1
+        best_dist > 0 && break
+        changed = 0
+        # for k in range(ndim+1)
+        for k = 1:NDIM+1
+            ineigh = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
+            ineigh == -1 && continue
+            dist = _distplane(d, ineigh, z)
+
+            #### comment from scipy implementation
+            # Note addition of eps -- otherwise, this code does not
+            # necessarily terminate! The compiler may use extended
+            # accuracy of the FPU so that (dist > best_dist), but
+            # after storing to double size, dist == best_dist,
+            # resulting to non-terminating loop
+
+            if dist > best_dist + eeps*(1 + abs(best_dist))
+                #### comment from scipy implementation
+                # Note: this is intentional: we jump in the middle of the cycle,
+                #       and continue the cycle from the next k.
+                #
+                #       This apparently sweeps the different directions more
+                #       efficiently. We don't need full accuracy, since we do
+                #       a directed search afterwards in any case.
+                isimplex = ineigh
+                best_dist = dist
+                changed = 1
+            end
+        end
+    end
+
+    #### comment from scipy implementation
+    # We should now be somewhere near the simplex containing the point,
+    # locate it with a directed search
+    start[] = isimplex
+    return _find_simplex_directed(d, c, x, start, eeps, eeps_broad)
+end
+
+
 # scipy/spatial/_qhull.pyx: _barycentric_inside
 function _barycentric_inside(transform, x, c, eeps)
     ### docs from scipy
@@ -642,6 +900,29 @@ function _barycentric_inside(transform, x, c, eeps)
         return false
     end
     return true
+end
+
+
+# scipy/spatial/_qhull.pyx: _barycentric_coordinate_single
+@inline function _barycentric_coordinate_single(transform, x, c, i)
+    #### comment from scipy
+    # Compute a single barycentric coordinate.
+    #
+    # Before the ndim+1'th coordinate can be computed, the other must have
+    # been computed earlier.
+
+    if i == NDIM+1
+        c[NDIM+1] = 1.0
+        for j = 1:NDIM
+            c[NDIM+1] -= c[j]
+        end
+    else
+        c[i] = 0
+        for j = 1:NDIM
+            c[i] += transform[i,j] * (x[j] - transform[NDIM+1,j])
+        end
+    end
+
 end
 
 
@@ -758,11 +1039,13 @@ function _clough_tocher_2d_single(d::DelaunayInfo, isimplex, b, f, df)
     # peek into neighbouring triangles.
     #
 
+    transp_neighbors = transpose(d.neighbors)
+
     y = MVector{2,Float64}(0.0,0.0)
     c = MVector{3,Float64}(0.0,0.0,0.0)
     g = MVector{3,Float64}(0.0,0.0,0.0)
     for k = 1:3
-        itri = d.neighbors[3*(isimplex-1) + k]
+        itri = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
 
         if itri == -1
             # No neighbour.
