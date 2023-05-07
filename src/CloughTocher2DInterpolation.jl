@@ -432,9 +432,13 @@ end
 
 
 # scipy/scipy/interpolate/_qhull.pyx: _distplane
-function _distplane(d::DelaunayInfo, isimplex, pt)
+@inline function _distplane(d::DelaunayInfo, isimplex, pt)
     dist = d.offset[isimplex]
-    dist += dot(view(d.normals, :, isimplex), pt)
+    # doesn't like views here ...
+    # dist += dot(view(d.normals, :, isimplex), pt)
+    for i = 1:NDIM+1
+        dist += d.normals[i,isimplex] * pt[i]
+    end
     return dist
 end
 
