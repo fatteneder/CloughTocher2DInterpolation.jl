@@ -417,7 +417,7 @@ end
 
 function size_check(points::AbstractVector)
     if length(points) % NDIM != 0
-        throw(ArgumentError("points must be of length 2*npoints"))
+        throw(ArgumentError("points must be vector of length 2*npoints"))
     end
 end
 function size_check(points::AbstractMatrix)
@@ -583,7 +583,7 @@ function find_simplex(d::DelaunayInfo, _points::AbstractArray, tol=nothing)
     points = reshape(_points, 2, npoints)
 
     eeps = isnothing(tol) ? 100 * eps(Float64) : tol
-    eeps_broad = sqrt(eps)
+    eeps_broad = sqrt(eeps)
 
     buffer_c = zeros(3)
 
@@ -595,9 +595,9 @@ end
 
 
 # scipy/spatial/_qhull.pyx: _find_simplex_bruteforce
-function _find_simplex_bruteforce(d, c, x, eps, eps_broad)
+function _find_simplex_bruteforce(d, c, x, eeps, eeps_broad)
 
-    if _is_point_fully_outside(d, x, eps)
+    if _is_point_fully_outside(d, x, eeps)
         return -1
     end
 
@@ -609,7 +609,7 @@ function _find_simplex_bruteforce(d, c, x, eps, eps_broad)
         # add points also after construction
         # atm we don't allow adding points later so we do the check for NaNs in the constructor
         # hence, we can leave the branch out here
-        inside = _barycentric_inside(transform, x, c, eps)
+        inside = _barycentric_inside(transform, x, c, eeps)
         if inside
             return isimplex
         end
@@ -621,7 +621,7 @@ end
 
 
 # scipy/spatial/_qhull.pyx: _barycentric_inside
-function _barycentric_inside(transform, x, c, eps)
+function _barycentric_inside(transform, x, c, eeps)
     ### docs from scipy
     # Check whether point is inside a simplex, using barycentric
     # coordinates.  `c` will be filled with barycentric coordinates, if
@@ -634,11 +634,11 @@ function _barycentric_inside(transform, x, c, eps)
         end
         c[NDIM+1] -= c[i]
 
-        if !(-eps <= c[i] <= 1 + eps)
+        if !(-eeps <= c[i] <= 1 + eeps)
             return false
         end
     end
-    if !(-eps <= c[NDIM+1] <= 1 + eps)
+    if !(-eeps <= c[NDIM+1] <= 1 + eeps)
         return false
     end
     return true
@@ -659,9 +659,9 @@ end
 
 
 # scipy/spatial/_qhull.pyx: _is_point_fully_outside
-function _is_point_fully_outside(d, x, eps)
-    (x[1] < d.min_bound[1] - eps || x[1] > d.max_bound[1] + eps) && return true
-    (x[2] < d.min_bound[2] - eps || x[2] > d.max_bound[2] + eps) && return true
+function _is_point_fully_outside(d, x, eeps)
+    (x[1] < d.min_bound[1] - eeps || x[1] > d.max_bound[1] + eeps) && return true
+    (x[2] < d.min_bound[2] - eeps || x[2] > d.max_bound[2] + eeps) && return true
     return false
 end
 
