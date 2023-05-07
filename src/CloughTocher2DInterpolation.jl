@@ -120,17 +120,17 @@ function DelaunayInfo(points::Matrix{Float64})
 
     # indices of vertices of neighboring simplices, ith neighbor of jth simplex is
     # opposite to the ith vertex that spans the simplex, -1 if no neighbor
-    neighbors = -ones(Int32, nsimplex, NDIM+1)
+    neighbors = -ones(Int32, NDIM+1, nsimplex)
     for isimplex = 1:nsimplex
         v1,v2,v3 = simplices[:,isimplex]
         for (i,simp) in enumerate(eachcol(simplices))
             i == isimplex && continue
             if v1 in simp && v2 in simp
-                neighbors[isimplex,3] = i
+                neighbors[3,isimplex] = i
             elseif v1 in simp && v3 in simp
-                neighbors[isimplex,2] = i
+                neighbors[2,isimplex] = i
             elseif v2 in simp && v3 in simp
-                neighbors[isimplex,1] = i
+                neighbors[1,isimplex] = i
             end
         end
     end
@@ -732,8 +732,6 @@ function _find_simplex_directed(d, c, x, start, eeps, eeps_broad)
         isimplex = 1
     end
 
-    transp_neighbors = transpose(d.neighbors)
-
     #### comment from scipy implementation
     # The maximum iteration count: it should be large enough so that
     # the algorithm usually succeeds, but smaller than nsimplex so
@@ -753,7 +751,7 @@ function _find_simplex_directed(d, c, x, start, eeps, eeps_broad)
 
             if c[k] < -eeps
                 # The target point is in the direction of neighbor `k`!
-                m = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
+                m = d.neighbors[(NDIM+1)*(isimplex-1) + k]
                 if m == -1
                     # The point is outside the triangulation: bail out
                     start[] = isimplex
@@ -834,8 +832,6 @@ function _find_simplex(d, c, x, start, eeps, eeps_broad)
     z = MVector{3,Float64}(0.0,0.0,0.0)
     _lift_point(d, x, z)
 
-    transp_neighbors = transpose(d.neighbors)
-
     # Walk the tessellation searching for a facet with a positive planar distance
     best_dist = _distplane(d, isimplex, z)
     changed = 1
@@ -844,7 +840,7 @@ function _find_simplex(d, c, x, start, eeps, eeps_broad)
         changed = 0
         # for k in range(ndim+1)
         for k = 1:NDIM+1
-            ineigh = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
+            ineigh = d.neighbors[(NDIM+1)*(isimplex-1) + k]
             ineigh == -1 && continue
             dist = _distplane(d, ineigh, z)
 
@@ -1039,13 +1035,11 @@ function _clough_tocher_2d_single(d::DelaunayInfo, isimplex, b, f, df)
     # peek into neighbouring triangles.
     #
 
-    transp_neighbors = transpose(d.neighbors)
-
     y = MVector{2,Float64}(0.0,0.0)
     c = MVector{3,Float64}(0.0,0.0,0.0)
     g = MVector{3,Float64}(0.0,0.0,0.0)
     for k = 1:3
-        itri = transp_neighbors[(NDIM+1)*(isimplex-1) + k]
+        itri = d.neighbors[(NDIM+1)*(isimplex-1) + k]
 
         if itri == -1
             # No neighbour.

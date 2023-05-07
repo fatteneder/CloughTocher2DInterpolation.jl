@@ -78,7 +78,7 @@ end
     points = [0,0,0,1,1,1,1,0]
     d = DelaunayInfo(points)
     @test d.simplices == [2 4 3; 4 2 1]'
-    @test d.neighbors == [-1 -1 2; -1 -1 1]
+    @test d.neighbors == [-1 -1 2; -1 -1 1]'
 
     ### scipy/spatial/tests/test_qhull: TestDelaunay::test_duplicate_points
     # shouldn't fail on duplicate points
