@@ -3,8 +3,8 @@ module CloughTocher2DInterpolation
 
 using MiniQhull
 using LinearAlgebra
-using SnoopPrecompile
 using StaticArrays
+using PrecompileTools
 
 export CloughTocher2DInterpolator
 
@@ -1124,14 +1124,14 @@ end
 
 
 
-@precompile_setup begin
+@setup_workload begin
 
-    points         = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
-    ipoints        = [0.5,0.5, 1.5,0.5]
+    points         = Float64[0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+    ipoints        = Float64[0.5,0.5, 1.5,0.5]
     real_values    = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     complex_values = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
 
-    @precompile_all_calls begin
+    @compile_workload begin
         ip = CloughTocher2DInterpolator(points, real_values)
         ip(ipoints)
         ip = CloughTocher2DInterpolator(points, complex_values)
