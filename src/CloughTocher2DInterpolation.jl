@@ -516,18 +516,22 @@ Available keyword arguments:
 # Example
 
 ```julia
-points = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+points  = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
 ipoints = [0.5,0.5, 1.5,0.5]
 
 # real
-values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-ip = CloughTocher2DInterpolator(points, values)
-ip(ipoints)
+data   = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+interp = CloughTocher2DInterpolator(points, data)
+interp(ipoints)
 
 # complex
-values = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
-ip = CloughTocher2DInterpolator(points, values)
-ip(ipoints)
+data   = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
+interp = CloughTocher2DInterpolator(points, data)
+interp(ipoints)
+
+# interpolate data into preallocated array (will be resized if necessary)
+result = zeros(eltype(data), length(data))
+interp(ipoints, result)
 ```
 """
 function CloughTocher2DInterpolator(points::AbstractMatrix, values::T;
@@ -578,7 +582,7 @@ end
 
 
 
-function (I::CloughTocher2DInterpolator{T})(intrp_points) where T
+function (I::CloughTocher2DInterpolator{T})(intrp_points::AbstractArray) where T
     size_check(intrp_points)
     intrp_values = similar(intrp_points, T, Int(length(intrp_points)/2))
     I(intrp_values, intrp_points) # inplace
@@ -588,7 +592,7 @@ end
 
 # interpolate inplace of intrp_values
 # scipy/interpolate/interpnd.pyx: _do_evaluate
-function (I::CloughTocher2DInterpolator{T})(intrp_values::AbstractVector{T}, _intrp_points) where T
+function (I::CloughTocher2DInterpolator{T})(_intrp_points::AbstractArray, intrp_values::AbstractVector{T}) where T
 
     size_check(_intrp_points)
     n_intrp_points = Int(length(_intrp_points)/2)

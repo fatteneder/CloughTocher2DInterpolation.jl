@@ -10,15 +10,22 @@ In particular, this package implements
 ```julia
 using CloughTocher2DInterpolation
 
-points         = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
-ipoints        = [0.5,0.5, 1.5,0.5]
-real_values    = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-complex_values = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
+points  = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+ipoints = [0.5,0.5, 1.5,0.5]
 
-ip = CloughTocher2DInterpolator(points, real_values)
-ip(ipoints)
-ip = CloughTocher2DInterpolator(points, complex_values)
-ip(ipoints)
+# real
+data   = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+interp = CloughTocher2DInterpolator(points, data)
+interp(ipoints)
+
+# complex
+data   = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
+interp = CloughTocher2DInterpolator(points, data)
+interp(ipoints)
+
+# interpolate data into preallocated array (will be resized if necessary)
+result = zeros(eltype(data), length(data))
+interp(ipoints, result)
 ```
 
 ## Acknowledgement

@@ -180,7 +180,7 @@ function _check_barycentric_transforms(tri::DelaunayInfo; unit_cube=false, unit_
 end
 
 
-@testset "Delaunay: test_more_barycentric_transforms" begin
+@testset "DelaunayInfo: test_more_barycentric_transforms" begin
 
     # triangulate some "nasty" grids
     eeps = eps(Float64)
@@ -234,6 +234,25 @@ end
 
 
 @testset "CloughTocher2DInterpolator" begin
+
+    # run examples from README -- we are happy when we don't crash,
+    # accuracy will check by the ported sympy tests below
+    points  = [0,0, 0,1, 1,0, 1,1, 2,0, 2,1]
+    ipoints = [0.5,0.5, 1.5,0.5]
+
+    # real
+    data   = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    interp = CloughTocher2DInterpolator(points, data)
+    interp(ipoints)
+
+    # complex
+    data   = [1.0+2.0im, 2.0+3.0im, 3.0-1.0im, 4.0-0.5im, 5.0-3.0im, 6.0+5.0im]
+    interp = CloughTocher2DInterpolator(points, data)
+    interp(ipoints)
+
+    # interpolate data into preallocated array (will be resized if necessary)
+    result = zeros(eltype(data), length(data))
+    interp(ipoints, result)
 
 
     ### scipy/interpolate/tests/test_interpnd: TestCloughTocher2DInterpolator::test_linear_smoketest
