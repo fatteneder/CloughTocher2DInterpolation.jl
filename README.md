@@ -1,5 +1,8 @@
 # CloughTocher2DInterpolation
 
+[ci-img]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/workflows/CI/badge.svg
+[ci-url]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/actions?query=workflow%3ACI
+
 __Shameless and direct clone of scipy's CloughTocher2DInterpolator for Julia__
 
 In particular, this package implements 
