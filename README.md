@@ -1,5 +1,7 @@
 # CloughTocher2DInterpolation
 
+[![CI][ci-img]][ci-url]
+
 [ci-img]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/workflows/CI/badge.svg
 [ci-url]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/actions?query=workflow%3ACI
 
