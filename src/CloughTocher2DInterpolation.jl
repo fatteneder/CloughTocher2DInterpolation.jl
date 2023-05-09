@@ -585,7 +585,7 @@ end
 function (I::CloughTocher2DInterpolator{T})(intrp_points::AbstractArray) where T
     size_check(intrp_points)
     intrp_values = similar(intrp_points, T, Int(length(intrp_points)/2))
-    I(intrp_values, intrp_points) # inplace
+    I(intrp_points, intrp_values) # inplace
     return intrp_values
 end
 
