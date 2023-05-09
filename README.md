@@ -5,7 +5,7 @@
 [ci-img]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/workflows/CI/badge.svg
 [ci-url]: https://github.com/fatteneder/CloughTocher2DInterpolation.jl/actions?query=workflow%3ACI
 
-[codecov-img]: https://codecov.io/gh/fatteneder/CloughTocher2DInterpolation.jl/branch/master/graph/badge.svg
+[codecov-img]: https://codecov.io/gh/fatteneder/CloughTocher2DInterpolation.jl/branch/main/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/fatteneder/CloughTocher2DInterpolation.jl
 
 __Shameless and direct clone of scipy's CloughTocher2DInterpolator for Julia__
